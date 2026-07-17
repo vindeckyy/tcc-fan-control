@@ -1,57 +1,45 @@
-# tcc-fan-control
+# fan-control
 
-Fan control for Tongfang/Clevo laptops running TUXEDO Control Center's `tuxedo-drivers`.
+Fan control for Tongfang/Clevo barebones using `/dev/tuxedo_io`.
 
-Two ways to use it:
-- `tcc-fan-control.py` — daemon that polls CPU temp and writes fan duty via a temperature curve.
-- `tcc-fan-gui.py` — web UI on `http://127.0.0.1:4444` with sliders, presets, live sensors, and 500ms re-assert.
+Two interfaces:
+- `fan-daemon.py` — temperature-driven curve. Polls k10temp, writes duty via ioctl.
+- `fan-gui.py` — web UI on `http://127.0.0.1:4444` with sliders, presets, live sensors.
 
-## Requirements
-
-- `tuxedo-drivers` kernel module loaded (provides `/dev/tuxedo_io`)
-- `python3` with `tkinter` (for the daemon — `apt install python3-tk` if needed)
-- Root access (the ioctl path needs it)
-
-## Setup
+## Install
 
 ```bash
-sudo cp tcc-fan-control.py /usr/local/bin/tcc-fan-control.py
-sudo cp tcc-fan-gui.py /usr/local/bin/tcc-fan-gui
-sudo chmod +x /usr/local/bin/tcc-fan-*
+sudo cp fan-daemon.py fan-gui.py /usr/local/bin/
+sudo chmod +x /usr/local/bin/fan-daemon /usr/local/bin/fan-gui
+sudo cp fan-daemon.service /etc/systemd/system/
+sudo systemctl enable --now fan-daemon
 ```
 
-## Daemon
+## Run
 
 ```bash
-sudo systemctl enable --now tcc-fan.service
+sudo fan-daemon                 # start the curve-based daemon
+sudo fan-gui                    # open the web UI
 ```
-
-Custom curve via JSON:
-
-```bash
-sudo tcc-fan-control.py --curve '[[0,0],[60,50],[80,160],[95,255]]'
-```
-
-## GUI
-
-```bash
-sudo tcc-fan-gui
-```
-
-Opens `http://127.0.0.1:4444` in your browser. Drag the sliders; close the window to release control back to the EC.
 
 ## How it works
 
-The kernel exposes `/dev/tuxedo_io` with ioctl magic `0xEC`. `tuxedo_io_ioctl.h` defines the Uniwill/Clevo fan read/write commands. Both `tccd` (TUXEDO's daemon) and this project use the same ioctl path:
+`/dev/tuxedo_io` exposes ioctl commands (magic `0xEC`) for reading and writing
+EC fan duty registers. Both the kernel-supplied `tuxedo-drivers` userspace
+companion and this project use the same path:
 
-- `R_UW_FANSPEED` / `R_UW_FANSPEED2` — read current duty (0–255)
-- `W_UW_FANSPEED` / `W_UW_FANSPEED2` — write duty
-- `R_UW_FAN_TEMP` / `R_UW_FAN_TEMP2` — read EC internal temp sensors
+- Read duty: `R_FS1`, `R_FS2`
+- Write duty: `W_FS1`, `W_FS2`
+- Restore auto: `W_AUTO` (ioctl with no payload)
+- Lock manual mode: write `0x40` to `W_MODE` so the EC firmware doesn't
+  fight your duty values with its own auto-curve.
 
-Note: on x86_64, the `_IOR`/`_IOW` macros use `sizeof(pointer) = 8` for the size field. Get this wrong and the ioctl silently returns 0.
+Note: on x86_64, the `_IOR`/`_IOW` macros use `sizeof(pointer) = 8` for the
+size field. Get this wrong and the ioctl silently returns 0.
 
 ## Caveats
 
-- Requires DMI-matching in `tuxedo-drivers` for hardware detection. Some Tongfang barebones (e.g. GWTN156-2BK) don't match any known table — fan control still works, but profile-specific DMI features (TDP limits, profile modes) won't.
-- Setting PWM above ~200 wraps on this EC. Both tools cap at 200 (≈80% slider).
-- If TCC is running, stop it first: `sudo systemctl stop tccd`.
+- Requires `tuxedo-drivers` kernel module loaded.
+- Cap duty at 198 — the EC firmware wraps/oscillates at the top of its 0–200 range.
+- Set bit `0x40` in mode register before writing, otherwise the EC reverts
+  to its auto-curve within ~100ms.
