@@ -105,18 +105,6 @@ def curve_duty():
     pwm = float(interp(float(t), current_curve()))
     return max(0, min(state['max_duty'], int(round(pwm))))
 
-def snapshot():
-    return {
-        'fan1': rd(R_FS1), 'fan2': rd(R_FS2),
-        'ec_temp1': rd(R_TEMP), 'ec_temp2': rd(R_TEMP2),
-        'targets': dict(state['targets']),
-        'mode': state['mode'],
-        'profile': state['profile'],
-        'max_duty': state['max_duty'],
-        'custom_curve': list(state['custom_curve']),
-        'temps': sensors(),
-    }
-
 def poll():
     # # ponytail: at 50Hz the poller keeps up with any 100ms-class EC settle
     # delay the driver has. Reads are free (cached), writes are unconditional
@@ -494,21 +482,25 @@ update();
 </script></body></html>"""
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
     def log_message(self, *a, **k): pass
+    def _send(self, ctype, body, extra=None):
+        self.send_response(200)
+        self.send_header('Content-Type', ctype)
+        if extra:
+            for k, v in extra.items(): self.send_header(k, v)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
     def do_GET(self):
         if self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
-            self.send_header('Pragma', 'no-cache')
-            self.end_headers()
-            self.wfile.write(HTML.encode())
+            self._send('text/html; charset=utf-8', HTML_BYTES,
+                       {'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache'})
         elif self.path == '/snapshot':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Cache-Control', 'no-store')
-            self.end_headers()
-            self.wfile.write(json.dumps(snapshot()).encode())
+            # # ponytail: sensors are cached (refreshed every 500ms by the
+            # sensor thread) so the 1s UI poll doesn't walk sysfs each time.
+            self._send('application/json', SNAP_BYTES(),
+                       {'Cache-Control': 'no-store'})
     def do_POST(self):
         n = int(self.headers.get('Content-Length', 0))
         body = json.loads(self.rfile.read(n)) if n else {}
@@ -552,10 +544,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif self.path == '/config':
             if 'max_duty' in body:
                 state['max_duty'] = max(0, min(198, int(body['max_duty'])))
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(b'{"ok":true}')
+        self._send('application/json', b'{"ok":true}')
+
+# # ponytail: pre-encode the static HTML once (avoids .encode() per request)
+HTML_BYTES = HTML.encode()
+
+# # ponytail: sensor scan is cached. A background thread refreshes it every
+# 500ms; /snapshot reads the cached list instead of walking sysfs per poll.
+_sensor_cache = []
+_sensor_lock = threading.Lock()
+def sensor_thread():
+    global _sensor_cache
+    while True:
+        out = []
+        for h in sorted(pathlib.Path('/sys/class/hwmon').glob('hwmon*')):
+            try: nm = (h/'name').read_text().strip()
+            except Exception: continue
+            for t in sorted(h.glob('temp*_input')):
+                try: out.append({'name': nm, 'label': t.stem, 'temp': int(t.read_text().strip())/1000})
+                except Exception: pass
+        with _sensor_lock:
+            _sensor_cache = out
+        time.sleep(0.5)
+
+# # ponytail: ioctl reads are slow (~130ms each on this EC). We cache the
+# fan + temp readback in a background thread (refreshed every 200ms) so
+# /snapshot never blocks on a kernel EC transaction. The UI is fine with
+# 200ms-stale readback; the 50Hz poller still writes live values.
+_rb_cache = {'fan1':0,'fan2':0,'ec_temp1':0,'ec_temp2':0}
+_rb_lock = threading.Lock()
+def readback_thread():
+    global _rb_cache
+    while True:
+        snap = {
+            'fan1': rd(R_FS1), 'fan2': rd(R_FS2),
+            'ec_temp1': rd(R_TEMP), 'ec_temp2': rd(R_TEMP2),
+        }
+        with _rb_lock:
+            _rb_cache = snap
+        time.sleep(0.2)
+
+def SNAP_BYTES():
+    with _rb_lock:
+        rb = dict(_rb_cache)
+    with _sensor_lock:
+        temps = list(_sensor_cache)
+    return json.dumps({
+        'fan1': rb['fan1'], 'fan2': rb['fan2'],
+        'ec_temp1': rb['ec_temp1'], 'ec_temp2': rb['ec_temp2'],
+        'targets': dict(state['targets']),
+        'mode': state['mode'],
+        'profile': state['profile'],
+        'max_duty': state['max_duty'],
+        'custom_curve': list(state['custom_curve']),
+        'temps': temps,
+    }).encode()
 
 def shutdown(*_):
     try:
@@ -571,7 +614,9 @@ signal.signal(signal.SIGTERM, shutdown)
 signal.signal(signal.SIGINT, shutdown)
 
 if __name__ == '__main__':
-    threading.Thread(target=lambda: http.server.HTTPServer(('127.0.0.1', 4444), Handler).serve_forever(), daemon=True).start()
+    threading.Thread(target=sensor_thread, daemon=True).start()
+    threading.Thread(target=readback_thread, daemon=True).start()
+    threading.Thread(target=lambda: http.server.ThreadingHTTPServer(('127.0.0.1', 4444), Handler).serve_forever(), daemon=True).start()
     webbrowser.open('http://127.0.0.1:4444')
     try:
         while True: time.sleep(1)
