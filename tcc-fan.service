@@ -1,0 +1,12 @@
+[Unit]
+Description=TCC-style fan control daemon
+Documentation=https://github.com/tuxedocomputers/tuxedo-drivers
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/tcc-fan-control.py --interval 2 --fans 2
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
