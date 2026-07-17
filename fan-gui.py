@@ -63,7 +63,7 @@ def interp(t, curve):
 #  - mode='released': poller no-ops. EC's own auto-curve takes over.
 #  - mode='custom'  : same as 'curve' but uses the editable custom curve.
 state = {
-    'mode': 'curve',
+    'mode': 'manual',
     'profile': 'balanced',
     'targets': {1: 0, 2: 0},
     'max_duty': 198,
@@ -210,31 +210,45 @@ input[type=range]:disabled{opacity:.5}
 <div class="wrap">
 <div class="card">
 <h1>⚡ Fan Control</h1>
-<div class="sub"><span class="live-dot"></span>Live <span id="modeTag" class="tag curve">curve</span><span class="tag" id="profileTag">balanced</span></div>
+<div class="sub"><span class="live-dot"></span>Live <span id="modeTag" class="tag manual">manual</span></div>
 
 <div class="group">
 <div class="row"><label>CPU Fan <span class="badge" id="cpuPct"></span></label><span><span class="v" id="v1">0</span>% <span class="d" id="a1">(read 0)</span></span></div>
-<input type="range" id="f1" min="0" max="100" value="0" disabled>
+<input type="range" id="f1" min="0" max="100" value="0">
 <div class="bar curve" id="barWrap1"><div id="bar1" style="width:0%"></div></div>
 </div>
 
 <div class="group">
 <div class="row"><label>GPU Fan <span class="badge" id="gpuPct"></span></label><span><span class="v" id="v2">0</span>% <span class="d" id="a2">(read 0)</span></span></div>
-<input type="range" id="f2" min="0" max="100" value="0" disabled>
+<input type="range" id="f2" min="0" max="100" value="0">
 <div class="bar curve" id="barWrap2"><div id="bar2" style="width:0%"></div></div>
 </div>
 
+<div class="setting" style="margin-top:8px">
+<div>
+<label><span class="title-tip" title="Show the full control panel: presets, Hot & Silent, link fans, custom curve editor, and settings. Leave off for simple slider-only control.">Advanced</span></label>
+<div class="desc">Reveal presets, Hot &amp; Silent, custom curve, and settings.</div>
+</div>
+<input type="checkbox" id="adv" style="width:18px;height:18px">
+</div>
+
+<div id="advancedPanel" style="display:none">
+
 <div class="group">
-<h2><span class="title-tip" title="Three built-in profiles plus a custom curve you edit. Click a profile to enter curve mode; the poller drives the fan from CPU temp.">Profile</span></h2>
-<div class="btn-row" id="profiles">
-<button class="btn" data-profile="silent" title="Stays silent below 60°C. Aggressive ramp after 70°C. Best for quiet environments.">🤫 Silent</button>
-<button class="btn active" data-profile="balanced" title="Default. Balanced between noise and cooling. Reasonable fan noise for typical workloads.">⚖️ Balanced</button>
-<button class="btn" data-profile="performance" title="Keeps fans at higher duty. Better for sustained heavy loads, gaming, video encoding.">🚀 Performance</button>
-<button class="btn" data-profile="custom" title="Edit your own curve. Click to enter edit mode.">🛠 Custom</button>
-<button class="btn" data-profile="manual" title="Manual mode. The curve stops driving. The poller holds whatever duty is set by the slider/presets/Hot & Silent. Pick a profile to go back to curve mode.">🎛️ Manual</button>
+<h2><span class="title-tip" title="Quick fan presets. Stop = 0%, Max = cap.">Presets</span></h2>
+<div class="preset" id="presets">
+<button data-v="0" title="Set both fans to 0%.">Stop</button>
+<button data-v="25" title="25% duty.">25%</button>
+<button data-v="50" title="50% duty.">50%</button>
+<button data-v="75" title="75% duty.">75%</button>
+<button data-v="100" title="Max duty (clamped to the cap).">Max</button>
 </div>
+<div class="btn-row">
+<button class="btn" id="hotsilent" title="Lock both fans at the hardware's minimum stable speed. Ignores CPU temperature — even a 90°C CPU stays quiet. The poller fights any drift back to the EC's own auto-curve.">🥵 Hot &amp; Silent</button>
+<button class="btn" id="link" title="When on, dragging fan 1 also moves fan 2 and vice versa. Off = independent control.">🔗 Link fans</button>
+<button class="btn warn" id="restore" title="Hand control back to the EC's own auto-curve. The poller stops writing.">Release control</button>
+<button class="btn" id="editCurve" title="Open the custom fan curve editor. Build your own temperature→duty curve.">🛠 Custom curve</button>
 </div>
-<div class="suggest" id="curveHint">CPU temp drives the fan. Sliders are disabled in curve mode — pick a preset or switch to manual.</div>
 </div>
 
 <div class="group" id="customEditor" style="display:none">
@@ -247,28 +261,13 @@ input[type=range]:disabled{opacity:.5}
 </div>
 </div>
 
-<div class="group">
-<h2><span class="title-tip" title="Drag a slider to take manual control. The poller will write your value at 50Hz, no curve drift.">Manual Override</span></h2>
-<div class="preset" id="presets">
-<button data-v="0" title="Set both fans to 0%.">Stop</button>
-<button data-v="25" title="25% duty.">25%</button>
-<button data-v="50" title="50% duty.">50%</button>
-<button data-v="75" title="75% duty.">75%</button>
-<button data-v="100" title="Max duty (clamped to the cap).">Max</button>
-</div>
-<div class="btn-row">
-<button class="btn" id="hotsilent" title="Lock both fans at the hardware's minimum stable speed. Ignores CPU temperature — even a 90°C CPU stays quiet. The poller fights any drift back to the EC's own auto-curve.">🥵 Hot &amp; Silent</button>
-<button class="btn" id="link" title="When on, dragging fan 1 also moves fan 2 and vice versa. Off = independent control.">🔗 Link fans</button>
-<button class="btn warn" id="restore" title="Hand control back to the EC's own auto-curve. The poller stops writing.">Release control</button>
-</div>
-<div class="suggest" id="manualHint" style="display:none">Manual mode active. The poller writes your slider value 50× per second. Pick a profile to go back to curve mode.</div>
-</div>
+</div><!-- /advancedPanel -->
 
 <div class="group"><h2>Live Sensors</h2><div class="temp-grid" id="temps"></div>
 <div class="sub" style="margin-top:12px">EC: <span id="ec1">--</span>°C / <span id="ec2">--</span>°C</div></div>
 </div>
 
-<div class="card">
+<div class="card" id="settingsCard" style="display:none">
 <h2>Settings</h2>
 <div class="setting">
 <div>
@@ -322,15 +321,7 @@ function setFan(f,v){
   }
 }
 
-let state = { targets: {1:0, 2:0}, mode:'curve', profile:'balanced' };
-
-async function switchProfile(p){
-  if (state.profile === p) return;
-  await post('/profile',{profile:p});
-  state.profile = p;
-  state.mode = (p === 'custom') ? 'custom' : 'curve';
-  refreshUI();
-}
+let state = { targets: {1:0, 2:0}, mode:'manual' };
 
 async function setMode(m){
   await post('/mode',{mode:m});
@@ -338,16 +329,13 @@ async function setMode(m){
   refreshUI();
 }
 
-document.querySelectorAll('#profiles button').forEach(b=>{
-  b.addEventListener('click', async () => {
-    const p = b.dataset.profile;
-    if (p === 'manual') {
-      // # ponytail: Manual is a mode toggle, not a profile change. The
-      // last-selected curve profile stays in state so resuming is one click.
-      await setMode('manual');
-    } else {
-      await switchProfile(p);
-    }
+document.querySelectorAll('#presets button').forEach(b=>{
+  b.addEventListener('click',async ()=>{
+    const v = +b.dataset.v;
+    await setMode('manual');
+    $('f1').value = v; $('v1').textContent = v;
+    $('f2').value = v; $('v2').textContent = v;
+    setFan(1, v);
   });
 });
 
@@ -395,6 +383,20 @@ $('refresh').addEventListener('change', e=>{
   refreshTimer = setInterval(update, refreshMs);
 });
 
+// # ponytail: Advanced checkbox gates the whole control panel + settings.
+$('adv').addEventListener('change', e=>{
+  const on = e.target.checked;
+  $('advancedPanel').style.display = on ? 'block' : 'none';
+  $('settingsCard').style.display = on ? 'block' : 'none';
+});
+
+// # ponytail: custom curve is revealed by its own button inside Advanced.
+$('editCurve').addEventListener('click', async () => {
+  $('customEditor').style.display = 'block';
+  const s = await (await fetch('/snapshot')).json();
+  renderCurveTable(s.custom_curve);
+});
+
 function theme(t){
   const light = {'--bg':'#f6f8fa','--card':'#fff','--text':'#1f2328','--dim':'#59636e','--border':'#d1d9e0'};
   const dark = {'--bg':'#000','--card':'#0a0a0a'};
@@ -415,16 +417,6 @@ function renderCurveTable(curve){
     `<td>duty <input type="number" class="ct-d" data-i="${i}" min="0" max="198" value="${pwm}"></td></tr>`
   ).join('');
 }
-
-document.querySelectorAll('#profiles button[data-profile=custom]').forEach(b=>{
-  b.addEventListener('click', async () => {
-    await switchProfile('custom');
-    $('customEditor').style.display = 'block';
-    fetch('/snapshot').then(r=>r.json()).then(s=>{
-      renderCurveTable(s.custom_curve);
-    });
-  });
-});
 
 $('addRow').addEventListener('click',()=>{
   const rows = [...$('curveTable').querySelectorAll('tr')];
@@ -454,38 +446,19 @@ $('applyCurve').addEventListener('click',()=>{
 });
 
 function refreshUI(){
-  document.querySelectorAll('#profiles button').forEach(b=>{
-    // # ponytail: 'manual' is a mode, not a profile — highlight it when
-    // mode === 'manual' instead of when it matches state.profile.
-    const isActive = b.dataset.profile === 'manual'
-      ? state.mode === 'manual'
-      : b.dataset.profile === state.profile;
-    b.classList.toggle('active', isActive);
-  });
-  const inCurve = state.mode === 'curve' || state.mode === 'custom';
-  const inManual = state.mode === 'manual';
   const inReleased = state.mode === 'released';
-  ['f1','f2'].forEach(id=>$(id).disabled = inCurve || inReleased);
+  ['f1','f2'].forEach(id=>$(id).disabled = inReleased);
   document.querySelectorAll('#presets button').forEach(b=>b.disabled = inReleased);
   $('restore').disabled = inReleased;
   $('link').disabled = inReleased;
-  $('customEditor').style.display = (state.mode === 'custom') ? 'block' : 'none';
-  $('manualHint').style.display = inManual ? 'block' : 'none';
   const tag = $('modeTag');
   if (inReleased) {
     tag.className = 'tag released';
     tag.textContent = 'released';
-  } else if (inManual) {
+  } else {
     tag.className = 'tag manual';
     tag.textContent = 'manual';
-  } else if (state.mode === 'custom') {
-    tag.className = 'tag curve';
-    tag.textContent = 'custom';
-  } else {
-    tag.className = 'tag curve';
-    tag.textContent = 'curve: ' + state.profile;
   }
-  $('profileTag').textContent = state.profile;
 }
 
 function update(){
@@ -497,7 +470,6 @@ function update(){
     $('ec1').textContent=fmt(s.ec_temp1);
     $('ec2').textContent=fmt(s.ec_temp2);
     state.mode = s.mode;
-    state.profile = s.profile;
     // # ponytail: do NOT sync slider position to live EC duty. The slider is
     // what the user set; the poller's job is to keep the hardware there. We
     // update the readback text + bar (what's actually happening), not the
