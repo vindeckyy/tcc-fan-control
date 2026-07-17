@@ -372,14 +372,14 @@ $('link').addEventListener('click',()=>{
 
 $('restore').addEventListener('click',()=>setMode('released'));
 
-// # ponytail: "Hot & Silent" — force both fans to 25% (the kernel's
-// minimum stable speed = NB02_FAN_SPEED_MAX * FAN_ON_MIN_SPEED_PERCENT / 100
-// = 200 * 25/100 = 50 duty = 25% slider). CPU temperature is ignored.
-// The 50Hz poller holds the value and fights any drift from the EC's
-// own auto-curve.
+// # ponytail: "Hot & Silent" — force both fans to the EC's actual hardware
+// floor. 25% slider (= duty 50) looks like a floor but the EC firmware
+// guards against very-low speeds and intermittently ramps to 0x3c (60 duty,
+// = 30% slider) for ~3 minutes before settling. Asking for 0x3c directly
+// avoids the ramp — 30% slider is the value the EC accepts and holds.
 $('hotsilent').addEventListener('click', async () => {
   await setMode('manual');
-  const v = 25;
+  const v = 30;
   $('f1').value = v; $('v1').textContent = v;
   $('f2').value = v; $('v2').textContent = v;
   setFan(1, v);
