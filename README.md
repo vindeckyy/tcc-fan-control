@@ -1,6 +1,6 @@
 # fan-control
 
-Fan control for Tongfang/Clevo barebones using `/dev/tuxedo_io`.
+Fan control for Tongfang/Clevo barebones using the kernel's `/dev/tuxedo_io` ioctl interface.
 
 Two interfaces:
 - `fan-daemon.py` — temperature-driven curve. Polls k10temp, writes duty via ioctl.
@@ -24,9 +24,9 @@ sudo fan-gui                    # open the web UI
 
 ## How it works
 
-`/dev/tuxedo_io` exposes ioctl commands (magic `0xEC`) for reading and writing
-EC fan duty registers. Both the kernel-supplied `tuxedo-drivers` userspace
-companion and this project use the same path:
+The kernel module exposes a character device at `/dev/tuxedo_io` with ioctl
+commands (magic `0xEC`) for reading and writing EC fan duty registers.
+Both the kernel module's userspace companion and this project use the same path:
 
 - Read duty: `R_FS1`, `R_FS2`
 - Write duty: `W_FS1`, `W_FS2`
@@ -39,7 +39,7 @@ size field. Get this wrong and the ioctl silently returns 0.
 
 ## Caveats
 
-- Requires `tuxedo-drivers` kernel module loaded.
+- Requires the kernel's `tuxedo-io` driver loaded.
 - Cap duty at 198 — the EC firmware wraps/oscillates at the top of its 0–200 range.
 - Set bit `0x40` in mode register before writing, otherwise the EC reverts
   to its auto-curve within ~100ms.

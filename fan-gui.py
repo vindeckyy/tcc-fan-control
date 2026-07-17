@@ -132,10 +132,16 @@ document.querySelectorAll('.preset button').forEach(b=>{b.addEventListener('clic
 $('link').addEventListener('click',()=>{linked=!linked;$('link').textContent=linked?'🔗 Linked':'⛓ Unlinked'});
 $('stop').addEventListener('click',()=>{$('f1').value=0;$('f2').value=0;$('v1').textContent=0;$('v2').textContent=0;setFan(1,0);setFan(2,0)});
 $('fahr').addEventListener('change',e=>{fahrenheit=e.target.checked;update()});
-$('theme').addEventListener('change',e=>{const t=e.target.value;
-if(t==='midnight'){document.documentElement.style.setProperty('--bg','#000');document.documentElement.style.setProperty('--card','#0a0a0a')}
-else if(t==='light'){['--bg','--card','--text','--dim','--border'].forEach(k=>document.documentElement.style.setProperty(k, t==='light'?{--bg:'#f6f8fa',--card:'#fff',--text:'#1f2328',--dim:'#59636e',--border:'#d1d9e0'}[k]:''))}
-else{['--bg','--card','--text','--dim','--border'].forEach(k=>document.documentElement.style.removeProperty(k))}});
+function theme(t){
+  const light = {'--bg':'#f6f8fa','--card':'#fff','--text':'#1f2328','--dim':'#59636e','--border':'#d1d9e0'};
+  const dark = {'--bg':'#000','--card':'#0a0a0a'};
+  const vars = t==='light' ? light : t==='midnight' ? dark : null;
+  ['--bg','--card','--text','--dim','--border'].forEach(k=>{
+    if (vars && k in vars) document.documentElement.style.setProperty(k, vars[k]);
+    else document.documentElement.style.removeProperty(k);
+  });
+}
+$('theme').addEventListener('change',e=>theme(e.target.value));
 function setFan(f,v){fetch('/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fan:f,pct:v})}).catch(()=>{})}
 function update(){fetch('/snapshot').then(r=>r.json()).then(s=>{$('a1').textContent=`(read ${s.fan1})`;$('a2').textContent=`(read ${s.fan2})`;$('bar1').style.width=`${(s.fan1/2.55)|0}%`;$('bar2').style.width=`${(s.fan2/2.55)|0}%`;$('ec1').textContent=fmt(s.ec_temp1);$('ec2').textContent=fmt(s.ec_temp2);const grid=$('temps');grid.innerHTML='';s.temps.forEach(t=>{const d=document.createElement('div');d.className='temp';d.innerHTML=`<div class="l">${t.name} · ${t.label}</div><div class="t">${fmt(t.temp)}°${fahrenheit?'F':'C'}</div>`;grid.appendChild(d)})})}
 $('restore').addEventListener('click',()=>{fetch('/restore',{method:'POST'}).then(()=>{$('f1').value=0;$('f2').value=0;$('v1').textContent=0;$('v2').textContent=0})});
