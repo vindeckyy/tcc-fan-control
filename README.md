@@ -1,7 +1,7 @@
 # fan-control
 
-Fan control for Tongfang/Clevo barebones using the kernel's `/dev/tuxedo_io`
-ioctl interface. It includes a temperature-driven daemon and a local web
+Fan control for Clevo/Tongfang barebones using the kernel fan-control
+interface. It includes a temperature-driven daemon and a local web
 dashboard at `http://127.0.0.1:4444`.
 
 ## Highlights
@@ -25,8 +25,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now fan-daemon
 ```
 
-The kernel's `tuxedo-io` driver must be loaded. The EC firmware becomes
-unstable near duty 200, so all normal writes are capped at 198.
+The Clevo/Tongfang kernel fan-control interface must be available. The EC
+firmware becomes unstable near duty 200, so all normal writes are capped at 198.
 
 ## Run
 
@@ -52,6 +52,9 @@ fan-daemon --dry-run --profile silent
 Both programs read `/etc/fan-control.json`. The dashboard writes it
 atomically when settings change. Supported keys are `profile`, `curve`,
 `max_duty`, `hysteresis`, and `critical_temp`.
+
+If device auto-discovery finds more than one candidate, set
+`FAN_CONTROL_DEVICE` to the correct kernel device path.
 
 ```json
 {

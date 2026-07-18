@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Temperature-driven fan control for Tongfang/Clevo barebones."""
+"""Temperature-driven fan control for Clevo/Tongfang barebones."""
 
 import argparse
 import ctypes
@@ -36,7 +36,7 @@ PROFILES = {
 
 
 class EC:
-    def __init__(self, path="/dev/tuxedo_io"):
+    def __init__(self, path):
         self.fd = os.open(path, os.O_RDWR)
 
     def read(self, command):
@@ -66,6 +66,18 @@ def find_cpu_sensor():
         except OSError:
             continue
     return None
+
+
+def find_ec_device():
+    configured = os.environ.get("FAN_CONTROL_DEVICE")
+    if configured:
+        return configured
+    candidates = sorted(pathlib.Path("/dev").glob("*_io"))
+    if len(candidates) == 1:
+        return str(candidates[0])
+    if not candidates:
+        raise FileNotFoundError("Clevo/Tongfang fan-control device not found")
+    raise FileNotFoundError("multiple fan-control devices found; set FAN_CONTROL_DEVICE")
 
 
 def cpu_temp(sensor):
@@ -135,7 +147,7 @@ def run(args):
     hysteresis = max(0, int(config.get("hysteresis", args.hysteresis)))
     critical_temp = max(70, min(110, float(config.get("critical_temp", args.critical_temp))))
     sensor = find_cpu_sensor()
-    ec = None if args.dry_run else EC(args.device)
+    ec = None if args.dry_run else EC(args.device or find_ec_device())
     stopped = False
 
     def stop(*_):
@@ -194,7 +206,7 @@ def main():
     parser.add_argument("--profile", choices=PROFILES, default="balanced")
     parser.add_argument("--curve", type=json.loads, help="JSON list of [temperature, duty] points")
     parser.add_argument("--config", default="/etc/fan-control.json")
-    parser.add_argument("--device", default="/dev/tuxedo_io")
+    parser.add_argument("--device", help="kernel device path (or set FAN_CONTROL_DEVICE)")
     parser.add_argument("--fans", type=int, choices=(1, 2), default=2)
     parser.add_argument("--hysteresis", type=int, default=5)
     parser.add_argument("--max-duty", type=int, default=SAFE_MAX_DUTY)
@@ -207,8 +219,8 @@ def main():
         run(args)
     except PermissionError:
         sys.exit("need root")
-    except FileNotFoundError:
-        sys.exit(f"{args.device} not found — load tuxedo-drivers")
+    except FileNotFoundError as exc:
+        sys.exit(str(exc))
     except (OSError, ValueError) as exc:
         sys.exit(str(exc))
 

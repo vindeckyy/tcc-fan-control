@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web dashboard for /dev/tuxedo_io fan control."""
+"""Local web dashboard for Clevo/Tongfang fan control."""
 
 import argparse
 import collections
@@ -25,6 +25,18 @@ CONFIG_PATH = pathlib.Path(os.environ.get("FAN_CONTROL_CONFIG", "/etc/fan-contro
 
 def ioc(direction, kind, number, size):
     return (direction << 30) | (kind << 8) | number | (size << 16)
+
+
+def find_ec_device():
+    configured = os.environ.get("FAN_CONTROL_DEVICE")
+    if configured:
+        return configured
+    candidates = sorted(pathlib.Path("/dev").glob("*_io"))
+    if len(candidates) == 1:
+        return str(candidates[0])
+    if not candidates:
+        raise FileNotFoundError("Clevo/Tongfang fan-control device not found")
+    raise FileNotFoundError("multiple fan-control devices found; set FAN_CONTROL_DEVICE")
 
 
 R_FS1 = ioc(IOC_R, MAGIC_RD, 0x10, SZ)
@@ -535,16 +547,17 @@ def main():
     parser.add_argument("--demo", action="store_true", help="run with simulated hardware")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--port", type=int, default=4444)
+    parser.add_argument("--device", help="kernel device path (or set FAN_CONTROL_DEVICE)")
     args = parser.parse_args()
     DEMO = args.demo
     if not DEMO:
         stop_daemon()
         try:
-            FD = os.open("/dev/tuxedo_io", os.O_RDWR)
+            FD = os.open(args.device or find_ec_device(), os.O_RDWR)
         except PermissionError:
             sys.exit("need root")
-        except FileNotFoundError:
-            sys.exit("/dev/tuxedo_io not found — load tuxedo-drivers")
+        except FileNotFoundError as exc:
+            sys.exit(str(exc))
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     if state["mode"] == "released":

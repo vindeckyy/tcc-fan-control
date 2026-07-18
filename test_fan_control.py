@@ -1,6 +1,8 @@
 import importlib.util
+import os
 import pathlib
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).parent
 
@@ -43,6 +45,11 @@ class FanLogicTests(unittest.TestCase):
         sensors = gui.parse_nvidia_smi("0, 67, NVIDIA GeForce RTX 4080\n1, 54, NVIDIA RTX A2000\n")
         self.assertEqual([sensor["temp"] for sensor in sensors], [67.0, 54.0])
         self.assertIn("RTX 4080", sensors[0]["label"])
+
+    def test_device_path_override(self):
+        with mock.patch.dict(os.environ, {"FAN_CONTROL_DEVICE": "/dev/custom_fan_io"}):
+            self.assertEqual(daemon.find_ec_device(), "/dev/custom_fan_io")
+            self.assertEqual(gui.find_ec_device(), "/dev/custom_fan_io")
 
 
 if __name__ == "__main__":
